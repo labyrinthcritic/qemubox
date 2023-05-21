@@ -26,8 +26,6 @@ fn main() {
     }
 }
 
-// cli command implementations
-
 /// Handling of the `Cli::Ls` subcommand.
 fn ls() -> Result<(), Error> {
     let (_, machines) = get_machines()?;
@@ -50,11 +48,26 @@ fn machine(name: String, cmd: MachineCommand) -> Result<(), Error> {
         Ok((machines_dir, machines)) => {
             if let Some(machine) = machines.iter().find(|m| m.name == name) {
                 match cmd {
-                    cli::MachineCommand::Run => {
+                    cli::MachineCommand::Run { cd_rom, verbose } => {
                         println!("Launching {}...", machine.name.bright_green().bold());
-                        machine
-                            .config
-                            .construct_launch_command(machines_dir.join(&machine.name))
+                        let mut command = machine.config.construct_launch_command(
+                            machines_dir.join(&machine.name),
+                            cd_rom.as_ref().map(|p| p.as_path()),
+                        );
+
+                        if verbose {
+                            eprintln!("invoking qemu with arguments:");
+                            eprintln!(
+                                "    {}",
+                                command
+                                    .get_args()
+                                    .map(|s| s.to_string_lossy().to_string())
+                                    .reduce(|left, right| left + " " + &right)
+                                    .unwrap()
+                            )
+                        }
+
+                        command
                             .stdout(Stdio::piped())
                             .spawn()
                             .unwrap()
@@ -68,6 +81,19 @@ fn machine(name: String, cmd: MachineCommand) -> Result<(), Error> {
                         } else {
                             display_warning(format!("are you sure? This will remove {dir_to_remove:?} and all of its contents.\nRun with --yes to confirm.").as_str());
                         }
+                    }
+                    MachineCommand::Edit => {
+                        todo!();
+
+                        // i don't know how TUIs work.
+                        // currently this code does not work and fails with os error 5
+                        /*
+                        let editor = std::env::var("EDITOR").unwrap_or("vim".to_string());
+                        println!("{editor}");
+                        let machine_toml = machines_dir.join(&machine.name).join("machine.toml");
+                        println!("{machine_toml:?}");
+                        Command::new(editor).arg(machine_toml).spawn().unwrap();
+                        */
                     }
                 }
             } else {

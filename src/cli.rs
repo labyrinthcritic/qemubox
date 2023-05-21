@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
@@ -16,7 +18,7 @@ pub enum CliCommand {
         #[arg(long)]
         disk_size: u32,
     },
-    /// Run or edit an existing machine.
+    /// Run or edit a machine.
     Machine {
         name: String,
         #[command(subcommand)]
@@ -27,10 +29,17 @@ pub enum CliCommand {
 #[derive(Subcommand)]
 pub enum MachineCommand {
     /// Launch a qemu-system-x86_64 instance for this machine.
-    Run,
-    /// Recursively remove the machine's directory.
+    Run {
+        #[arg(long)]
+        cd_rom: Option<PathBuf>,
+        #[arg(short, long)]
+        verbose: bool,
+    },
+    /// Remove the machine's directory.
     Remove {
         #[arg(long)]
         yes: bool,
     },
+    /// Open machine.toml in $EDITOR
+    Edit,
 }
