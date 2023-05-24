@@ -19,6 +19,16 @@ pub struct Machine {
     pub memory: u32,
     pub kvm: bool,
     pub uefi: bool,
+    pub video: VideoOption,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum VideoOption {
+    Std,
+    VirtIo,
+    Qxl,
+    None,
 }
 
 impl Default for Machine {
@@ -29,6 +39,7 @@ impl Default for Machine {
             memory: 2048,
             kvm: true,
             uefi: false,
+            video: VideoOption::Std,
         }
     }
 }
@@ -47,6 +58,7 @@ impl Config {
                     memory,
                     kvm,
                     uefi,
+                    video,
                 },
         } = self;
 
@@ -69,11 +81,28 @@ impl Config {
             args.push("-enable-kvm");
         }
 
+        let ovmf_vars_path = format!(
+            "if=pflash,format=raw,file={}",
+            containing_dir_path
+                .as_ref()
+                .join("ovmf_vars.fd")
+                .to_string_lossy()
+        );
+
         if *uefi {
             args.extend([
                 "-drive",
                 "if=pflash,format=raw,readonly=on,file=/usr/share/edk2-ovmf/x64/OVMF_CODE.fd",
+                "-drive",
+                ovmf_vars_path.as_str(),
             ]);
+        }
+
+        match video {
+            VideoOption::Std => args.extend(["-vga", "std"]),
+            VideoOption::VirtIo => args.extend(["-vga", "virtio"]),
+            VideoOption::Qxl => args.extend(["-vga", "qxl"]),
+            VideoOption::None => args.extend(["-vga", "none", "-nographic"]),
         }
 
         let cd_rom = cd_rom.map(|p| p.to_string_lossy().to_string());

@@ -44,63 +44,59 @@ fn ls() -> Result<(), Error> {
 
 /// Handling of the `Cli::Machine` subcommand.
 fn machine(name: String, cmd: MachineCommand) -> Result<(), Error> {
-    match get_machines() {
-        Ok((machines_dir, machines)) => {
-            if let Some(machine) = machines.iter().find(|m| m.name == name) {
-                match cmd {
-                    cli::MachineCommand::Run { cd_rom, verbose } => {
-                        println!("Launching {}...", machine.name.bright_green().bold());
-                        let mut command = machine.config.construct_launch_command(
-                            machines_dir.join(&machine.name),
-                            cd_rom.as_ref().map(|p| p.as_path()),
-                        );
+    let (machines_dir, machines) = get_machines()?;
+    if let Some(machine) = machines.iter().find(|m| m.name == name) {
+        match cmd {
+            cli::MachineCommand::Run { cd_rom, verbose } => {
+                println!("Launching {}...", machine.name.bright_green().bold());
+                let mut command = machine.config.construct_launch_command(
+                    machines_dir.join(&machine.name),
+                    cd_rom.as_ref().map(|p| p.as_path()),
+                );
 
-                        if verbose {
-                            eprintln!("invoking qemu with arguments:");
-                            eprintln!(
-                                "    {}",
-                                command
-                                    .get_args()
-                                    .map(|s| s.to_string_lossy().to_string())
-                                    .reduce(|left, right| left + " " + &right)
-                                    .unwrap()
-                            )
-                        }
-
+                if verbose {
+                    eprintln!("invoking qemu with arguments:");
+                    eprintln!(
+                        "    {}",
                         command
-                            .stdout(Stdio::piped())
-                            .spawn()
+                            .get_args()
+                            .map(|s| s.to_string_lossy().to_string())
+                            .reduce(|left, right| left + " " + &right)
                             .unwrap()
-                            .wait()
-                            .unwrap();
-                    }
-                    cli::MachineCommand::Remove { yes } => {
-                        let dir_to_remove = machines_dir.join(&machine.name);
-                        if yes {
-                            std::fs::remove_dir_all(&dir_to_remove).unwrap();
-                        } else {
-                            display_warning(format!("are you sure? This will remove {dir_to_remove:?} and all of its contents.\nRun with --yes to confirm.").as_str());
-                        }
-                    }
-                    MachineCommand::Edit => {
-                        todo!();
-
-                        // i don't know how TUIs work.
-                        // currently this code does not work and fails with os error 5
-                        /*
-                        let editor = std::env::var("EDITOR").unwrap_or("vim".to_string());
-                        println!("{editor}");
-                        let machine_toml = machines_dir.join(&machine.name).join("machine.toml");
-                        println!("{machine_toml:?}");
-                        Command::new(editor).arg(machine_toml).spawn().unwrap();
-                        */
-                    }
+                    )
                 }
-            } else {
-                return Err(Error::NoMachineByName);
+
+                command
+                    .stdout(Stdio::piped())
+                    .spawn()
+                    .unwrap()
+                    .wait()
+                    .unwrap();
+            }
+            cli::MachineCommand::Remove { yes } => {
+                let dir_to_remove = machines_dir.join(&machine.name);
+                if yes {
+                    std::fs::remove_dir_all(&dir_to_remove).unwrap();
+                } else {
+                    display_warning(format!("are you sure? This will remove {dir_to_remove:?} and all of its contents.\nRun with --yes to confirm.").as_str());
+                }
+            }
+            MachineCommand::Edit => {
+                todo!();
+
+                // i don't know how TUIs work.
+                // currently this code does not work and fails with os error 5
+                /*
+                let editor = std::env::var("EDITOR").unwrap_or("vim".to_string());
+                println!("{editor}");
+                let machine_toml = machines_dir.join(&machine.name).join("machine.toml");
+                println!("{machine_toml:?}");
+                Command::new(editor).arg(machine_toml).spawn().unwrap();
+                */
             }
         }
-        Err(_) => todo!(),
+    } else {
+        return Err(Error::NoMachineByName);
     }
 
     Ok(())
@@ -183,7 +179,20 @@ fn new_machine(name: String, disk_size: u32) -> Result<(), Error> {
         ])
         .stdout(Stdio::null())
         .spawn()
+        .unwrap()
+        .wait()
         .unwrap();
+
+    // create the ovmf vars file for uefi
+
+    if std::fs::copy(
+        "/usr/share/edk2-ovmf/x64/OVMF_VARS.fd",
+        machine_dir.join("ovmf_vars.fd"),
+    )
+    .is_err()
+    {
+        return Err(Error::OvmfVarsCopyFail);
+    }
 
     Ok(())
 }
@@ -196,6 +205,7 @@ enum Error {
     CreateMachineDirectoryFail,
     WriteMachineTomlFail,
     NoMachineByName,
+    OvmfVarsCopyFail,
 }
 
 fn report_error(error: Error) {
@@ -215,6 +225,9 @@ fn report_error(error: Error) {
         }
         Error::WriteMachineTomlFail => display_error("could not write machines.toml"),
         Error::NoMachineByName => display_error("no machine found by that name"),
+        Error::OvmfVarsCopyFail => {
+            display_error("could not copy OVMF_VARS.fd (do you have edk2-ovmf installed?)")
+        }
     }
 }
 
